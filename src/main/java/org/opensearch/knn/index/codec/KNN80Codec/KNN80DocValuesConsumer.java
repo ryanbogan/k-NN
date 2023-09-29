@@ -104,7 +104,8 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
         return KNNEngine.getEngine(engineName);
     }
 
-    public void addKNNBinaryField(FieldInfo field, DocValuesProducer valuesProducer, boolean isMerge, boolean isRefresh) throws IOException {
+    public void addKNNBinaryField(FieldInfo field, DocValuesProducer valuesProducer, boolean isMerge, boolean isRefresh)
+        throws IOException {
         // Get values to be indexed
         BinaryDocValues values = valuesProducer.getBinary(field);
         KNNCodecUtil.Pair pair = KNNCodecUtil.getFloats(values);
@@ -163,6 +164,7 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
         indexCreator.createIndex();
         writeFooter(indexPath, engineFileName);
     }
+
     private void recordMergeStats(int length, long arraySize) {
         KNNGraphValue.MERGE_CURRENT_OPERATIONS.decrement();
         KNNGraphValue.MERGE_CURRENT_DOCS.decrementBy(length);

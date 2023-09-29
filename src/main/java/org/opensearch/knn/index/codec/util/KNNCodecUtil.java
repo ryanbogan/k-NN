@@ -52,7 +52,11 @@ public class KNNCodecUtil {
             }
             docIdList.add(doc);
         }
-        return new KNNCodecUtil.Pair(docIdList.stream().mapToInt(Integer::intValue).toArray(), vectorList.toArray(new float[][] {}), serializationMode);
+        return new KNNCodecUtil.Pair(
+            docIdList.stream().mapToInt(Integer::intValue).toArray(),
+            vectorList.toArray(new float[][] {}),
+            serializationMode
+        );
     }
 
     public static long calculateArraySize(float[][] vectors, SerializationMode serializationMode) {
