@@ -565,7 +565,6 @@ public class PainlessScriptIT extends KNNRestTestCase {
         properties.add(
             new MappingProperty(FIELD_NAME, KNNVectorFieldMapper.CONTENT_TYPE).dimension("2")
                 .knnMethodContext(knnMethodContext)
-                .docValues(randomBoolean())
         );
 
         String source = String.format("1/(1 + l2Squared([1.0f, 1.0f], doc['%s']))", FIELD_NAME);
