@@ -11,6 +11,7 @@ import org.opensearch.knn.index.codec.util.KNNVectorSerializerFactory;
 import org.opensearch.knn.index.codec.util.SerializationMode;
 import org.opensearch.knn.jni.JNICommons;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,8 +34,9 @@ public class VectorTransferFloat extends VectorTransfer {
 
     @Override
     public void transfer(final BytesRef bytesRef) {
-        final KNNVectorSerializer vectorSerializer = KNNVectorSerializerFactory.getSerializerByBytesRef(bytesRef);
-        final float[] vector = vectorSerializer.byteToFloatArray(bytesRef);
+        ByteArrayInputStream byteStream = new ByteArrayInputStream(bytesRef.bytes, bytesRef.offset, bytesRef.length);
+        final KNNVectorSerializer vectorSerializer = KNNVectorSerializerFactory.getSerializerByStreamContent(byteStream);
+        final float[] vector = vectorSerializer.byteToFloatArray(byteStream);
         dimension = vector.length;
 
         if (vectorsPerTransfer == Integer.MIN_VALUE) {

@@ -15,6 +15,7 @@ import org.apache.lucene.util.BytesRef;
 import org.opensearch.knn.index.codec.util.KNNVectorSerializer;
 import org.opensearch.knn.index.codec.util.KNNVectorSerializerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
@@ -77,8 +78,9 @@ public enum VectorDataType {
 
         @Override
         public float[] getVectorFromBytesRef(BytesRef binaryValue) {
-            final KNNVectorSerializer vectorSerializer = KNNVectorSerializerFactory.getSerializerByBytesRef(binaryValue);
-            return vectorSerializer.byteToFloatArray(binaryValue);
+            ByteArrayInputStream byteStream = new ByteArrayInputStream(binaryValue.bytes, binaryValue.offset, binaryValue.length);
+            final KNNVectorSerializer vectorSerializer = KNNVectorSerializerFactory.getSerializerByStreamContent(byteStream);
+            return vectorSerializer.byteToFloatArray(byteStream);
         }
 
     };

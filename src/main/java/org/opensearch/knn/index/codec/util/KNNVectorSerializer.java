@@ -7,6 +7,8 @@ package org.opensearch.knn.index.codec.util;
 
 import org.apache.lucene.util.BytesRef;
 
+import java.io.ByteArrayInputStream;
+
 /**
  * Interface abstracts the vector serializer object that is responsible for serialization and de-serialization of k-NN vector
  */
@@ -24,5 +26,5 @@ public interface KNNVectorSerializer {
      * @param bytesRef bytes that will be used for deserialization to array of floats
      * @return array of floats deserialized from the stream
      */
-    float[] byteToFloatArray(BytesRef bytesRef);
+    float[] byteToFloatArray(ByteArrayInputStream byteStream);
 }

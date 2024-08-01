@@ -7,6 +7,7 @@ package org.opensearch.knn.index.codec.util;
 
 import org.apache.lucene.util.BytesRef;
 
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.stream.IntStream;
@@ -27,13 +28,15 @@ public class KNNVectorAsCollectionOfFloatsSerializer implements KNNVectorSeriali
     }
 
     @Override
-    public float[] byteToFloatArray(BytesRef bytesRef) {
-        if (bytesRef == null || bytesRef.length % BYTES_IN_FLOAT != 0) {
+    public float[] byteToFloatArray(ByteArrayInputStream byteStream) {
+        if (byteStream == null || byteStream.available() % BYTES_IN_FLOAT != 0) {
             throw new IllegalArgumentException("Byte stream cannot be deserialized to array of floats");
         }
-        final int sizeOfFloatArray = bytesRef.length / BYTES_IN_FLOAT;
+        final byte[] vectorAsByteArray = new byte[byteStream.available()];
+        byteStream.read(vectorAsByteArray, 0, byteStream.available());
+        final int sizeOfFloatArray = vectorAsByteArray.length / BYTES_IN_FLOAT;
         final float[] vector = new float[sizeOfFloatArray];
-        ByteBuffer.wrap(bytesRef.bytes, bytesRef.offset, bytesRef.length).asFloatBuffer().get(vector);
+        ByteBuffer.wrap(vectorAsByteArray).asFloatBuffer().get(vector);
         return vector;
     }
 }

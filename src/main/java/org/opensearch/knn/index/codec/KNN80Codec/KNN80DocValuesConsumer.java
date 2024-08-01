@@ -5,7 +5,7 @@
 
 package org.opensearch.knn.index.codec.KNN80Codec;
 
-import lombok.NonNull;
+import com.google.common.collect.ImmutableMap;
 import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.store.ChecksumIndexInput;
 import org.opensearch.common.StopWatch;
@@ -14,12 +14,7 @@ import org.opensearch.core.common.bytes.BytesArray;
 import org.opensearch.core.xcontent.MediaTypeRegistry;
 import org.opensearch.core.xcontent.DeprecationHandler;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.opensearch.knn.index.IndexUtil;
 import org.opensearch.knn.index.KNNSettings;
-import org.opensearch.knn.index.VectorDataType;
-import org.opensearch.knn.index.codec.transfer.VectorTransfer;
-import org.opensearch.knn.index.codec.transfer.VectorTransferByte;
-import org.opensearch.knn.index.codec.transfer.VectorTransferFloat;
 import org.opensearch.knn.jni.JNIService;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.util.KNNCodecUtil;
@@ -60,13 +55,12 @@ import static org.opensearch.knn.common.KNNConstants.MODEL_ID;
 import static org.opensearch.knn.common.KNNConstants.PARAMETERS;
 import static org.opensearch.knn.index.codec.util.KNNCodecUtil.buildEngineFileName;
 import static org.opensearch.knn.index.codec.util.KNNCodecUtil.calculateArraySize;
-import static org.opensearch.knn.index.util.Faiss.FAISS_BINARY_INDEX_DESCRIPTION_PREFIX;
 
 /**
  * This class writes the KNN docvalues to the segments
  */
 @Log4j2
-class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
+public class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
 
     private final Logger logger = LogManager.getLogger(KNN80DocValuesConsumer.class);
 
@@ -95,87 +89,72 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
     }
 
     private boolean isKNNBinaryFieldRequired(FieldInfo field) {
-        final KNNEngine knnEngine = getKNNEngine(field);
+        final KNNEngine knnEngine = KNNCodecUtil.getKNNEngine(field);
         log.debug(String.format("Read engine [%s] for field [%s]", knnEngine.getName(), field.getName()));
-        return field.attributes().containsKey(KNNVectorFieldMapper.KNN_FIELD)
-            && KNNEngine.getEnginesThatCreateCustomSegmentFiles().stream().anyMatch(engine -> engine == knnEngine);
-    }
-
-    private KNNEngine getKNNEngine(@NonNull FieldInfo field) {
-        final String modelId = field.attributes().get(MODEL_ID);
-        if (modelId != null) {
-            var model = ModelCache.getInstance().get(modelId);
-            return model.getModelMetadata().getKnnEngine();
-        }
-        final String engineName = field.attributes().getOrDefault(KNNConstants.KNN_ENGINE, KNNEngine.DEFAULT.getName());
-        return KNNEngine.getEngine(engineName);
+        // This value will not be set: field.getVectorDimension()
+        return field.getVectorDimension() <= 0
+                && field.attributes().containsKey(KNNVectorFieldMapper.KNN_FIELD)
+                && KNNEngine.getEnginesThatCreateCustomSegmentFiles().stream().anyMatch(engine -> engine == knnEngine);
     }
 
     public void addKNNBinaryField(FieldInfo field, DocValuesProducer valuesProducer, boolean isMerge, boolean isRefresh)
-        throws IOException {
+            throws IOException {
         // Get values to be indexed
         BinaryDocValues values = valuesProducer.getBinary(field);
-        final KNNEngine knnEngine = getKNNEngine(field);
-        final String engineFileName = buildEngineFileName(
-            state.segmentInfo.name,
-            knnEngine.getVersion(),
-            field.name,
-            knnEngine.getExtension()
-        );
-        final String indexPath = Paths.get(
-            ((FSDirectory) (FilterDirectory.unwrap(state.directory))).getDirectory().toString(),
-            engineFileName
-        ).toString();
-
-        // Determine if we are creating an index from a model or from scratch
-        NativeIndexCreator indexCreator;
-        KNNCodecUtil.Pair pair;
-        Map<String, String> fieldAttributes = field.attributes();
-
-        if (fieldAttributes.containsKey(MODEL_ID)) {
-            String modelId = fieldAttributes.get(MODEL_ID);
-            Model model = ModelCache.getInstance().get(modelId);
-            if (model.getModelBlob() == null) {
-                throw new RuntimeException(String.format("There is no trained model with id \"%s\"", modelId));
-            }
-            VectorDataType vectorDataType = model.getModelMetadata().getVectorDataType();
-            pair = KNNCodecUtil.getPair(values, getVectorTransfer(vectorDataType));
-            indexCreator = () -> createKNNIndexFromTemplate(model, pair, knnEngine, indexPath);
-        } else {
-            // get vector data type from field attributes or provide default value
-            VectorDataType vectorDataType = VectorDataType.get(
-                fieldAttributes.getOrDefault(KNNConstants.VECTOR_DATA_TYPE_FIELD, VectorDataType.DEFAULT.getValue())
-            );
-            pair = KNNCodecUtil.getPair(values, getVectorTransfer(vectorDataType));
-            indexCreator = () -> createKNNIndexFromScratch(field, pair, knnEngine, indexPath);
-        }
-
-        // Skip index creation if no vectors or docs in segment
+        KNNCodecUtil.Pair pair = KNNCodecUtil.getFloats(values);
         if (pair.getVectorAddress() == 0 || pair.docs.length == 0) {
             logger.info("Skipping engine index creation as there are no vectors or docs in the segment");
             return;
         }
-
         long arraySize = calculateArraySize(pair.docs.length, pair.getDimension(), pair.serializationMode);
-
         if (isMerge) {
             KNNGraphValue.MERGE_CURRENT_OPERATIONS.increment();
             KNNGraphValue.MERGE_CURRENT_DOCS.incrementBy(pair.docs.length);
             KNNGraphValue.MERGE_CURRENT_SIZE_IN_BYTES.incrementBy(arraySize);
-            recordMergeStats(pair.docs.length, arraySize);
         }
-
         // Increment counter for number of graph index requests
         KNNCounter.GRAPH_INDEX_REQUESTS.increment();
+        if (isMerge) {
+            recordMergeStats(pair.docs.length, arraySize);
+        }
 
         if (isRefresh) {
             recordRefreshStats();
         }
+        createNativeIndex(state, field, pair);
+    }
 
-        // Ensure engineFileName is added to the tracked files by Lucene's TrackingDirectoryWrapper
+    public static void createNativeIndex(SegmentWriteState state, FieldInfo field, KNNCodecUtil.Pair pair) throws IOException {
+        final KNNEngine knnEngine = KNNCodecUtil.getKNNEngine(field);
+        final String engineFileName = buildEngineFileName(
+                state.segmentInfo.name,
+                knnEngine.getVersion(),
+                field.name,
+                knnEngine.getExtension()
+        );
+        final String indexPath = Paths.get(
+                ((FSDirectory) (FilterDirectory.unwrap(state.directory))).getDirectory().toString(),
+                engineFileName
+        ).toString();
+        NativeIndexCreator indexCreator;
+        // Create library index either from model or from scratch
+        if (field.attributes().containsKey(MODEL_ID)) {
+            String modelId = field.attributes().get(MODEL_ID);
+            Model model = ModelCache.getInstance().get(modelId);
+            if (model.getModelBlob() == null) {
+                throw new RuntimeException(String.format("There is no trained model with id \"%s\"", modelId));
+            }
+            indexCreator = () -> createKNNIndexFromTemplate(model.getModelBlob(), pair, knnEngine, indexPath);
+        } else {
+            indexCreator = () -> createKNNIndexFromScratch(field, pair, knnEngine, indexPath);
+        }
+
+        // This is a bit of a hack. We have to create an output here and then immediately close it to ensure that
+        // engineFileName is added to the tracked files by Lucene's TrackingDirectoryWrapper. Otherwise, the file will
+        // not be marked as added to the directory.
         state.directory.createOutput(engineFileName, state.context).close();
         indexCreator.createIndex();
-        writeFooter(indexPath, engineFileName);
+        writeFooter(state, indexPath, engineFileName);
     }
 
     private void recordMergeStats(int length, long arraySize) {
@@ -191,28 +170,27 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
         KNNGraphValue.REFRESH_TOTAL_OPERATIONS.increment();
     }
 
-    private void createKNNIndexFromTemplate(Model model, KNNCodecUtil.Pair pair, KNNEngine knnEngine, String indexPath) {
-        Map<String, Object> parameters = new HashMap<>();
-        parameters.put(KNNConstants.INDEX_THREAD_QTY, KNNSettings.state().getSettingValue(KNNSettings.KNN_ALGO_PARAM_INDEX_THREAD_QTY));
-
-        IndexUtil.updateVectorDataTypeToParameters(parameters, model.getModelMetadata().getVectorDataType());
-
+    private static void createKNNIndexFromTemplate(byte[] model, KNNCodecUtil.Pair pair, KNNEngine knnEngine, String indexPath) {
+        Map<String, Object> parameters = ImmutableMap.of(
+                KNNConstants.INDEX_THREAD_QTY,
+                KNNSettings.state().getSettingValue(KNNSettings.KNN_ALGO_PARAM_INDEX_THREAD_QTY)
+        );
         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
             JNIService.createIndexFromTemplate(
-                pair.docs,
-                pair.getVectorAddress(),
-                pair.getDimension(),
-                indexPath,
-                model.getModelBlob(),
-                parameters,
-                knnEngine
+                    pair.docs,
+                    pair.getVectorAddress(),
+                    pair.getDimension(),
+                    indexPath,
+                    model,
+                    parameters,
+                    knnEngine
             );
             return null;
         });
     }
 
-    private void createKNNIndexFromScratch(FieldInfo fieldInfo, KNNCodecUtil.Pair pair, KNNEngine knnEngine, String indexPath)
-        throws IOException {
+    private static void createKNNIndexFromScratch(FieldInfo fieldInfo, KNNCodecUtil.Pair pair, KNNEngine knnEngine, String indexPath)
+            throws IOException {
         Map<String, Object> parameters = new HashMap<>();
         Map<String, String> fieldAttributes = fieldInfo.attributes();
         String parametersString = fieldAttributes.get(KNNConstants.PARAMETERS);
@@ -234,25 +212,13 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
             parameters.put(PARAMETERS, algoParams);
         } else {
             parameters.putAll(
-                XContentHelper.createParser(
-                    NamedXContentRegistry.EMPTY,
-                    DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
-                    new BytesArray(parametersString),
-                    MediaTypeRegistry.getDefaultMediaType()
-                ).map()
+                    XContentHelper.createParser(
+                            NamedXContentRegistry.EMPTY,
+                            DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+                            new BytesArray(parametersString),
+                            MediaTypeRegistry.getDefaultMediaType()
+                    ).map()
             );
-        }
-
-        // Update index description of Faiss for binary data type
-        if (KNNEngine.FAISS == knnEngine
-            && VectorDataType.BINARY.getValue()
-                .equals(fieldAttributes.getOrDefault(KNNConstants.VECTOR_DATA_TYPE_FIELD, VectorDataType.DEFAULT.getValue()))
-            && parameters.get(KNNConstants.INDEX_DESCRIPTION_PARAMETER) != null) {
-            parameters.put(
-                KNNConstants.INDEX_DESCRIPTION_PARAMETER,
-                FAISS_BINARY_INDEX_DESCRIPTION_PREFIX + parameters.get(KNNConstants.INDEX_DESCRIPTION_PARAMETER).toString()
-            );
-            IndexUtil.updateVectorDataTypeToParameters(parameters, VectorDataType.BINARY);
         }
 
         // Used to determine how many threads to use when indexing
@@ -323,7 +289,7 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
         void createIndex() throws IOException;
     }
 
-    private void writeFooter(String indexPath, String engineFileName) throws IOException {
+    private static void writeFooter(SegmentWriteState state, String indexPath, String engineFileName) throws IOException {
         // Opens the engine file that was created and appends a footer to it. The footer consists of
         // 1. A Footer magic number (int - 4 bytes)
         // 2. A checksum algorithm id (int - 4 bytes)
@@ -353,16 +319,9 @@ class KNN80DocValuesConsumer extends DocValuesConsumer implements Closeable {
         os.close();
     }
 
-    private boolean isChecksumValid(long value) {
+    private static boolean isChecksumValid(long value) {
         // Check pulled from
         // https://github.com/apache/lucene/blob/branch_9_0/lucene/core/src/java/org/apache/lucene/codecs/CodecUtil.java#L644-L647
         return (value & CRC32_CHECKSUM_SANITY) != 0;
-    }
-
-    private VectorTransfer getVectorTransfer(VectorDataType vectorDataType) {
-        if (VectorDataType.BINARY == vectorDataType) {
-            return new VectorTransferByte(KNNSettings.getVectorStreamingMemoryLimit().getBytes());
-        }
-        return new VectorTransferFloat(KNNSettings.getVectorStreamingMemoryLimit().getBytes());
     }
 }

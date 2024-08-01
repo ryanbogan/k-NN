@@ -33,8 +33,8 @@ public class KNNVectorAsArraySerializer implements KNNVectorSerializer {
     }
 
     @Override
-    public float[] byteToFloatArray(BytesRef bytesRef) {
-        try (ByteArrayInputStream byteStream = new ByteArrayInputStream(bytesRef.bytes, bytesRef.offset, bytesRef.length)) {
+    public float[] byteToFloatArray(ByteArrayInputStream byteStream) {
+        try  {
             final ObjectInputStream objectStream = new ObjectInputStream(byteStream);
             final float[] vector = (float[]) objectStream.readObject();
             return vector;

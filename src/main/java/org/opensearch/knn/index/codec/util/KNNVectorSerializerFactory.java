@@ -8,7 +8,9 @@ package org.opensearch.knn.index.codec.util;
 import com.google.common.collect.ImmutableMap;
 import org.apache.lucene.util.BytesRef;
 
+import java.io.ByteArrayInputStream;
 import java.io.ObjectStreamConstants;
+import java.util.Arrays;
 import java.util.Map;
 
 import static org.opensearch.knn.index.codec.util.SerializationMode.ARRAY;
@@ -68,6 +70,27 @@ public class KNNVectorSerializerFactory {
         }
         int numberOfAvailableBytesAfterHeader = numberOfAvailableBytes - ARRAY_HEADER_OFFSET;
         return getSerializerOrThrowError(numberOfAvailableBytesAfterHeader, ARRAY);
+    }
+
+    public static KNNVectorSerializer getSerializerByStreamContent(final ByteArrayInputStream byteStream) {
+        final SerializationMode serializationMode = serializerModeFromStream(byteStream);
+        return getSerializerBySerializationMode(serializationMode);
+    }
+
+    public static SerializationMode serializerModeFromStream(ByteArrayInputStream byteStream) {
+        int numberOfAvailableBytesInStream = byteStream.available();
+        if (numberOfAvailableBytesInStream < ARRAY_HEADER_OFFSET) {
+            return getSerializerOrThrowError(numberOfAvailableBytesInStream, COLLECTION_OF_FLOATS);
+        }
+        final byte[] byteArray = new byte[SERIALIZATION_PROTOCOL_HEADER_PREFIX.length];
+        byteStream.read(byteArray, 0, SERIALIZATION_PROTOCOL_HEADER_PREFIX.length);
+        byteStream.reset();
+        // checking if stream protocol grammar in header is valid for serialized array
+        if (Arrays.equals(SERIALIZATION_PROTOCOL_HEADER_PREFIX, byteArray)) {
+            int numberOfAvailableBytesAfterHeader = numberOfAvailableBytesInStream - ARRAY_HEADER_OFFSET;
+            return getSerializerOrThrowError(numberOfAvailableBytesAfterHeader, ARRAY);
+        }
+        return getSerializerOrThrowError(numberOfAvailableBytesInStream, COLLECTION_OF_FLOATS);
     }
 
     private static SerializationMode getSerializerOrThrowError(int numberOfRemainingBytes, final SerializationMode serializationMode) {
