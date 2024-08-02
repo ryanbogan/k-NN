@@ -6,10 +6,12 @@
 package org.opensearch.knn.index.codec.KNN990Codec;
 
 import org.apache.lucene.codecs.CodecUtil;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
 import org.opensearch.knn.quantization.enums.SQTypes;
+import org.opensearch.knn.quantization.models.quantizationParams.QuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationParams.SQParams;
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
 
@@ -18,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class KNNQuantizationStateWriter {
-    public static void write(SegmentWriteState segmentWriteState) throws IOException {
+    public static void write(SegmentWriteState segmentWriteState, List<NativeEnginesKNNVectorsWriter.FieldWriter<?>> fields) throws IOException {
         String quantizationFileName =
                 IndexFileNames.segmentFileName(
                         segmentWriteState.segmentInfo.name, segmentWriteState.segmentSuffix, "qs");
@@ -30,9 +32,10 @@ public class KNNQuantizationStateWriter {
         List<FieldQuantizationState> fieldQuantizationStates = new ArrayList<>();
         List<Long> positions = new ArrayList<>();
 
-        for(int i = 0; i < 2; i++) {
-            String fieldName = "xyz" + i;
-            SQParams params = new SQParams(SQTypes.ONE_BIT);
+        for(NativeEnginesKNNVectorsWriter.FieldWriter<?> field : fields) {
+            FieldInfo fieldInfo = field.getFieldInfo();
+            String fieldName = fieldInfo.getName();
+            QuantizationParams params = NativeEnginesKNNVectorsWriter.getQuantizationParams();
             float[] thresholds = new float[]{
                     0.654869794845581F, 0.9052262902259827F, 0.9950445294380188F, 0.2792104482650757F, 0.9008876085281372F,
                     0.5784471035003662F, 0.9937006831169128F, 0.40283381938934326F, 0.5326775908470154F, 0.3075125515460968F,

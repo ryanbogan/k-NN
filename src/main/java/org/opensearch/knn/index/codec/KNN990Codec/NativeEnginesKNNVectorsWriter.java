@@ -111,7 +111,7 @@ public class NativeEnginesKNNVectorsWriter extends KnnVectorsWriter {
             }
             KNN80DocValuesConsumer.createNativeIndex(segmentWriteState, fieldWriter.fieldInfo, pair);
         }
-        KNNQuantizationStateWriter.write(segmentWriteState);
+        KNNQuantizationStateWriter.write(segmentWriteState, fields);
     }
 
     @Override
@@ -276,12 +276,13 @@ public class NativeEnginesKNNVectorsWriter extends KnnVectorsWriter {
         );
     }
 
-    private QuantizationParams getQuantizationParams() {
+    public static QuantizationParams getQuantizationParams() {
         // Implement this method to return appropriate quantization parameters based on your use case
         return new SQParams(SQTypes.ONE_BIT); // Example, modify as needed
     }
 
     public static class FieldWriter<T> extends KnnFieldVectorsWriter<T> {
+        @Getter
         private final FieldInfo fieldInfo;
         @Getter
         private final Map<Integer, T> vectorsMap;
