@@ -11,7 +11,6 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.IndexOutput;
 import org.opensearch.knn.quantization.enums.SQTypes;
-import org.opensearch.knn.quantization.models.quantizationParams.QuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationParams.SQParams;
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
 
@@ -35,7 +34,7 @@ public class KNNQuantizationStateWriter {
         for(NativeEnginesKNNVectorsWriter.FieldWriter<?> field : fields) {
             FieldInfo fieldInfo = field.getFieldInfo();
             String fieldName = fieldInfo.getName();
-            QuantizationParams params = NativeEnginesKNNVectorsWriter.getQuantizationParams();
+            SQParams params = new SQParams(SQTypes.ONE_BIT);
             float[] thresholds = new float[]{
                     0.654869794845581F, 0.9052262902259827F, 0.9950445294380188F, 0.2792104482650757F, 0.9008876085281372F,
                     0.5784471035003662F, 0.9937006831169128F, 0.40283381938934326F, 0.5326775908470154F, 0.3075125515460968F,
