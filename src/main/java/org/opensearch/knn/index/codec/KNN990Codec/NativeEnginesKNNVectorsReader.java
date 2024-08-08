@@ -26,7 +26,9 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.IOUtils;
 import org.opensearch.knn.index.query.KNNWeight;
+import org.opensearch.knn.index.query.QuantizationStateCache;
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
+import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,60 +40,6 @@ public class NativeEnginesKNNVectorsReader extends KnnVectorsReader {
 
     public NativeEnginesKNNVectorsReader(SegmentReadState state, final FlatVectorsReader flatVectorsReader) {
         this.flatVectorsReader = flatVectorsReader;
-    }
-
-    private  class FieldQuantizationState {
-        String fieldName;
-        byte[] stateBytes;
-
-        FieldQuantizationState(String fieldName, byte[] stateBytes) {
-            this.fieldName = fieldName;
-            this.stateBytes = stateBytes;
-        }
-    }
-
-
-    private  OneBitScalarQuantizationState readQuantizationState(SegmentReadState state, String fieldName)  {
-        String quantizationFileName =
-                IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, "qs");
-
-
-        try (IndexInput input = state.directory.openInput(quantizationFileName, IOContext.READ)) {
-
-            long footerStart = input.length() - CodecUtil.footerLength();
-            long markerAndIndexPosition = footerStart - Integer.BYTES - Long.BYTES;
-            input.seek(markerAndIndexPosition);
-            long indexStartPosition = input.readLong();
-            int marker = input.readInt();
-            input.seek(indexStartPosition);
-            int numFields = input.readInt();
-            List<FieldQuantizationState> fieldQuantizationStates = new ArrayList<>();
-            List<Long> positions = new ArrayList<>();
-            List<Integer> lengths = new ArrayList<>();
-
-            // Read each field's metadata from the index section
-            for (int i = 0; i < numFields; i++) {
-                String fieldName1 = input.readString();
-                int length = input.readInt();
-                lengths.add(length);
-                long position = input.readVLong();
-                positions.add(position);
-            }
-            for (int i = 0; i < numFields; i++) {
-                input.seek(positions.get(i));
-                byte[] stateBytes = new byte[lengths.get(i)];
-                input.readBytes(stateBytes, 0, lengths.get(i));
-                // Deserialize the byte array to a quantization state object
-                OneBitScalarQuantizationState quantizationState = OneBitScalarQuantizationState.fromByteArray(stateBytes);
-            }
-            // Validate footer
-            return OneBitScalarQuantizationState.fromByteArray(fieldQuantizationStates.get(0).stateBytes);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     /**
@@ -205,6 +153,7 @@ public class NativeEnginesKNNVectorsReader extends KnnVectorsReader {
      */
     @Override
     public void close() throws IOException {
+        QuantizationStateCache.getInstance().clear();
         IOUtils.close(flatVectorsReader);
     }
 

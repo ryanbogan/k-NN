@@ -20,11 +20,11 @@ import java.util.List;
 
 public class KNNQuantizationStateWriter {
     public static void write(SegmentWriteState segmentWriteState, List<NativeEnginesKNNVectorsWriter.FieldWriter<?>> fields) throws IOException {
-        String quantizationFileName =
+        String quantizationStateFileName =
                 IndexFileNames.segmentFileName(
                         segmentWriteState.segmentInfo.name, segmentWriteState.segmentSuffix, "qs");
 
-        IndexOutput output = segmentWriteState.directory.createOutput(quantizationFileName, segmentWriteState.context);
+        IndexOutput output = segmentWriteState.directory.createOutput(quantizationStateFileName, segmentWriteState.context);
         CodecUtil.writeIndexHeader(output,"QuantizationCodec", 0,
                 segmentWriteState.segmentInfo.getId(), segmentWriteState.segmentSuffix);
         // Collect data and positions
