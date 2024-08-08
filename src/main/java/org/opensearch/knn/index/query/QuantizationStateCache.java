@@ -12,14 +12,9 @@
 package org.opensearch.knn.index.query;
 
 import lombok.extern.log4j.Log4j2;
-import org.opensearch.knn.quantization.QuantizationManager;
-import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,7 +35,7 @@ public class QuantizationStateCache {
         return instance;
     }
 
-    public QuantizationState getQuantizationState(String fieldName) throws IOException, ClassNotFoundException {
+    public QuantizationState getQuantizationState(String fieldName) {
         return cache.get(fieldName);
     }
 
