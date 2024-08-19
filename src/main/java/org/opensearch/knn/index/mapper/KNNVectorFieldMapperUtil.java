@@ -251,7 +251,7 @@ public class KNNVectorFieldMapperUtil {
      * @return true if vector field should use KNNVectorsFormat
      */
     static boolean useLuceneKNNVectorsFormat(final Version indexCreatedVersion) {
-        return indexCreatedVersion.onOrAfter(Version.V_2_17_0) && KNNSettings.getIsLuceneVectorFormatEnabled();
+        return true;
     }
 
     private static SpaceType getSpaceType(final Settings indexSettings, final VectorDataType vectorDataType) {

@@ -22,12 +22,17 @@ import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Sorter;
+import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.codec.nativeindex.NativeIndexWriter;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory;
+import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
+import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
+import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
+import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -70,6 +75,10 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
     public void flush(int maxDoc, final Sorter.DocMap sortMap) throws IOException {
         // simply write data in the flat file
         flatVectorsWriter.flush(maxDoc, sortMap);
+
+        IndexOutput output = KNNQuantizationStateWriter.createOutputAndWriteHeader(segmentWriteState);
+
+        List<KNNQuantizationStateWriter.FieldQuantizationState> fieldQuantizationStates = new ArrayList<>();
         for (final NativeEngineFieldVectorsWriter<?> field : fields) {
             final VectorDataType vectorDataType = extractVectorDataType(field.getFieldInfo());
             final KNNVectorValues<?> knnVectorValues = KNNVectorValuesFactory.getVectorValues(
@@ -79,8 +88,22 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
             );
 
             // TODO: Extract quantization state here
+            QuantizationState quantizationState = new OneBitScalarQuantizationState(
+                new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT),
+                new float[] { 1.2f, 2.3f, 3.4f, 4.5f, 5.6f, 6.7f, 7.8f, 8.9f }
+            );
+
+            fieldQuantizationStates.add(
+                KNNQuantizationStateWriter.writeStateAndReturnFieldQuantizationState(
+                    output,
+                    field.getFieldInfo().getName(),
+                    quantizationState
+                )
+            );
+
             NativeIndexWriter.getWriter(field.getFieldInfo(), segmentWriteState).flushIndex(knnVectorValues);
         }
+        KNNQuantizationStateWriter.writeFooter(output, fieldQuantizationStates);
     }
 
     @Override
