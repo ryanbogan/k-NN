@@ -13,6 +13,7 @@ import org.apache.lucene.store.IndexOutput;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 public class KNNQuantizationStateWriter {
@@ -36,8 +37,8 @@ public class KNNQuantizationStateWriter {
         QuantizationState quantizationState
     ) throws IOException {
         byte[] stateBytes = quantizationState.toByteArray();
-        output.writeBytes(stateBytes, stateBytes.length);
         long position = output.getFilePointer();
+        output.writeBytes(stateBytes, stateBytes.length);
         return new FieldQuantizationState(fieldName, stateBytes, position);
     }
 
