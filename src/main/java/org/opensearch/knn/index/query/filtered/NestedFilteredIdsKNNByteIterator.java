@@ -6,7 +6,6 @@
 package org.opensearch.knn.index.query.filtered;
 
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.util.BitSet;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.vectorvalues.KNNBinaryVectorValues;
 
@@ -17,17 +16,17 @@ import java.io.IOException;
  * of which ID is set in parentBitSet and only return best child doc with the highest score.
  */
 public class NestedFilteredIdsKNNByteIterator extends FilteredIdsKNNByteIterator {
-    private final BitSet parentBitSet;
+    private final DocIdSetIterator parentDocIdSetIterator;
 
     public NestedFilteredIdsKNNByteIterator(
-        final BitSet filterIdsArray,
+        final DocIdSetIterator filterIdsArray,
         final byte[] queryVector,
         final KNNBinaryVectorValues binaryVectorValues,
         final SpaceType spaceType,
-        final BitSet parentBitSet
-    ) {
+        final DocIdSetIterator parentDocIdSetIterator
+    ) throws IOException {
         super(filterIdsArray, queryVector, binaryVectorValues, spaceType);
-        this.parentBitSet = parentBitSet;
+        this.parentDocIdSetIterator = parentDocIdSetIterator;
     }
 
     /**
@@ -43,7 +42,7 @@ public class NestedFilteredIdsKNNByteIterator extends FilteredIdsKNNByteIterator
         }
 
         currentScore = Float.NEGATIVE_INFINITY;
-        int currentParent = parentBitSet.nextSetBit(docId);
+        int currentParent = parentDocIdSetIterator.nextDoc();
         int bestChild = -1;
 
         while (docId != DocIdSetIterator.NO_MORE_DOCS && docId < currentParent) {
@@ -53,7 +52,7 @@ public class NestedFilteredIdsKNNByteIterator extends FilteredIdsKNNByteIterator
                 bestChild = docId;
                 currentScore = score;
             }
-            docId = bitSetIterator.nextDoc();
+            docId = docIdSetIterator.nextDoc();
         }
 
         return bestChild;

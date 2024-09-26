@@ -6,8 +6,6 @@
 package org.opensearch.knn.index.query.filtered;
 
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.util.BitSet;
-import org.apache.lucene.util.BitSetIterator;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.vectorvalues.KNNBinaryVectorValues;
 
@@ -21,8 +19,7 @@ import java.io.IOException;
  */
 public class FilteredIdsKNNByteIterator implements KNNIterator {
     // Array of doc ids to iterate
-    protected final BitSet filterIdsBitSet;
-    protected final BitSetIterator bitSetIterator;
+    protected final DocIdSetIterator docIdSetIterator;
     protected final byte[] queryVector;
     protected final KNNBinaryVectorValues binaryVectorValues;
     protected final SpaceType spaceType;
@@ -30,17 +27,16 @@ public class FilteredIdsKNNByteIterator implements KNNIterator {
     protected int docId;
 
     public FilteredIdsKNNByteIterator(
-        final BitSet filterIdsBitSet,
+        final DocIdSetIterator docIdSetIterator,
         final byte[] queryVector,
         final KNNBinaryVectorValues binaryVectorValues,
         final SpaceType spaceType
-    ) {
-        this.filterIdsBitSet = filterIdsBitSet;
-        this.bitSetIterator = new BitSetIterator(filterIdsBitSet, filterIdsBitSet.length());
+    ) throws IOException {
+        this.docIdSetIterator = docIdSetIterator;
         this.queryVector = queryVector;
         this.binaryVectorValues = binaryVectorValues;
         this.spaceType = spaceType;
-        this.docId = bitSetIterator.nextDoc();
+        this.docId = docIdSetIterator.nextDoc();
     }
 
     /**
@@ -57,7 +53,7 @@ public class FilteredIdsKNNByteIterator implements KNNIterator {
         }
         int doc = binaryVectorValues.advance(docId);
         currentScore = computeScore();
-        docId = bitSetIterator.nextDoc();
+        docId = docIdSetIterator.nextDoc();
         return doc;
     }
 

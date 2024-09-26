@@ -17,13 +17,13 @@ import org.apache.lucene.search.QueryVisitor;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.Bits;
 import org.opensearch.common.StopWatch;
 import org.opensearch.knn.index.query.ExactSearcher;
 import org.opensearch.knn.index.query.KNNQuery;
 import org.opensearch.knn.index.query.KNNWeight;
 import org.opensearch.knn.index.query.ResultUtil;
+import org.opensearch.knn.index.query.filtered.DocIdAndScoreIterator;
 import org.opensearch.knn.index.query.rescore.RescoreContext;
 
 import java.io.IOException;
@@ -108,9 +108,9 @@ public class NativeEngineKnnVectorQuery extends Query {
             LeafReaderContext leafReaderContext = leafReaderContexts.get(i);
             int finalI = i;
             rescoreTasks.add(() -> {
-                BitSet convertedBitSet = ResultUtil.resultMapToMatchBitSet(perLeafResults.get(finalI));
+                DocIdAndScoreIterator docIdAndScoreIterator = ResultUtil.resultMapToDocIdAndScoreIterator(perLeafResults.get(finalI));
                 final ExactSearcher.ExactSearcherContext exactSearcherContext = ExactSearcher.ExactSearcherContext.builder()
-                    .matchedDocs(convertedBitSet)
+                    .matchedDocs(docIdAndScoreIterator)
                     // setting to false because in re-scoring we want to do exact search on full precision vectors
                     .useQuantizedVectorsForSearch(false)
                     .k(k)

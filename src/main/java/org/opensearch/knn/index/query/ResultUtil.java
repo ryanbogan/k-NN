@@ -9,12 +9,11 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TotalHits;
-import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.DocIdSetBuilder;
+import org.opensearch.knn.index.query.filtered.DocIdAndScoreIterator;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -59,22 +58,6 @@ public final class ResultUtil {
     }
 
     /**
-     * Convert map to bit set
-     *
-     * @param resultMap Map of results
-     * @return BitSet of results
-     * @throws IOException If an error occurs during the search.
-     */
-    public static BitSet resultMapToMatchBitSet(Map<Integer, Float> resultMap) throws IOException {
-        if (resultMap.isEmpty()) {
-            return BitSet.of(DocIdSetIterator.empty(), 0);
-        }
-
-        final int maxDoc = Collections.max(resultMap.keySet()) + 1;
-        return BitSet.of(resultMapToDocIds(resultMap, maxDoc), maxDoc);
-    }
-
-    /**
      * Convert map of docs to doc id set iterator
      *
      * @param resultMap Map of results
@@ -90,6 +73,22 @@ public final class ResultUtil {
         final DocIdSetBuilder.BulkAdder setAdder = docIdSetBuilder.grow(resultMap.size());
         resultMap.keySet().forEach(setAdder::add);
         return docIdSetBuilder.build().iterator();
+    }
+
+    public static DocIdAndScoreIterator resultMapToDocIdAndScoreIterator(Map<Integer, Float> resultMap) {
+        if (resultMap.isEmpty()) {
+            return new DocIdAndScoreIterator(new int[0], new float[0]);
+        }
+
+        int[] docs = new int[resultMap.size()];
+        float[] scores = new float[resultMap.size()];
+        int i = 0;
+        for (Map.Entry<Integer, Float> entry : resultMap.entrySet()) {
+            docs[i] = entry.getKey();
+            scores[i] = entry.getValue();
+            i++;
+        }
+        return new DocIdAndScoreIterator(docs, scores);
     }
 
     /**

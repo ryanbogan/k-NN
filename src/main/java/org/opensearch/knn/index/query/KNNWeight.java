@@ -122,6 +122,7 @@ public class KNNWeight extends Weight {
      */
     public Map<Integer, Float> searchLeaf(LeafReaderContext context, int k) throws IOException {
         final BitSet filterBitSet = getFilteredDocsBitSet(context);
+        final DocIdSetIterator docIdSetIterator = getFilteredDocIdSetIterator(context);
         int cardinality = filterBitSet.cardinality();
         // We don't need to go to JNI layer if no documents are found which satisfy the filters
         // We should give this condition a deeper look that where it should be placed. For now I feel this is a good
@@ -139,7 +140,7 @@ public class KNNWeight extends Weight {
         final ExactSearcher.ExactSearcherContext exactSearcherContext = ExactSearcher.ExactSearcherContext.builder()
             .k(k)
             .isParentHits(true)
-            .matchedDocs(filterBitSet)
+            .matchedDocs(docIdSetIterator)
             // setting to true, so that if quantization details are present we want to do search on the quantized
             // vectors as this flow is used in first pass of search.
             .useQuantizedVectorsForSearch(true)
@@ -198,6 +199,31 @@ public class KNNWeight extends Weight {
             }
         };
         return BitSet.of(filterIterator, maxDoc);
+    }
+
+    private DocIdSetIterator getFilteredDocIdSetIterator(final LeafReaderContext ctx) throws IOException {
+        if (this.filterWeight == null) {
+            return DocIdSetIterator.empty();
+        }
+
+        final Bits liveDocs = ctx.reader().getLiveDocs();
+
+        final Scorer scorer = filterWeight.scorer(ctx);
+        if (scorer == null) {
+            return DocIdSetIterator.empty();
+        }
+
+        return createDocIdSetIterator(scorer.iterator(), liveDocs);
+    }
+
+    private DocIdSetIterator createDocIdSetIterator(final DocIdSetIterator filteredDocIdsIterator, final Bits liveDocs) throws IOException {
+        // Create a new BitSet from matching and live docs
+        return new FilteredDocIdSetIterator(filteredDocIdsIterator) {
+            @Override
+            protected boolean match(int doc) {
+                return liveDocs == null || liveDocs.get(doc);
+            }
+        };
     }
 
     private int[] getParentIdsArray(final LeafReaderContext context) throws IOException {

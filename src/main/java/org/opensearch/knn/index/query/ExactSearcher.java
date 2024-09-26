@@ -15,7 +15,6 @@ import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.HitQueue;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.util.BitSet;
 import org.opensearch.common.lucene.Lucene;
 import org.opensearch.knn.common.FieldInfoExtractor;
 import org.opensearch.knn.index.SpaceType;
@@ -23,7 +22,6 @@ import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.query.filtered.FilteredIdsKNNByteIterator;
 import org.opensearch.knn.index.query.filtered.FilteredIdsKNNIterator;
 import org.opensearch.knn.index.query.filtered.KNNIterator;
-import org.opensearch.knn.index.query.filtered.NestedFilteredIdsKNNByteIterator;
 import org.opensearch.knn.index.query.filtered.NestedFilteredIdsKNNIterator;
 import org.opensearch.knn.index.vectorvalues.KNNBinaryVectorValues;
 import org.opensearch.knn.index.vectorvalues.KNNFloatVectorValues;
@@ -52,7 +50,7 @@ public class ExactSearcher {
     public Map<Integer, Float> searchLeaf(final LeafReaderContext leafReaderContext, final ExactSearcherContext exactSearcherContext)
         throws IOException {
         KNNIterator iterator = getMatchedKNNIterator(leafReaderContext, exactSearcherContext);
-        if (exactSearcherContext.getMatchedDocs().cardinality() <= exactSearcherContext.getK()) {
+        if (exactSearcherContext.getMatchedDocs().cost() - 1 <= exactSearcherContext.getK()) {
             return scoreAllDocs(iterator);
         }
         return searchTopK(iterator, exactSearcherContext.getK());
@@ -101,13 +99,14 @@ public class ExactSearcher {
     private KNNIterator getMatchedKNNIterator(LeafReaderContext leafReaderContext, ExactSearcherContext exactSearcherContext)
         throws IOException {
         final KNNQuery knnQuery = exactSearcherContext.getKnnQuery();
-        final BitSet matchedDocs = exactSearcherContext.getMatchedDocs();
+        final DocIdSetIterator matchedDocs = exactSearcherContext.getMatchedDocs();
         final SegmentReader reader = Lucene.segmentReader(leafReaderContext.reader());
         final FieldInfo fieldInfo = reader.getFieldInfos().fieldInfo(knnQuery.getField());
         final SpaceType spaceType = FieldInfoExtractor.getSpaceType(modelDao, fieldInfo);
 
         boolean isNestedRequired = exactSearcherContext.isParentHits() && knnQuery.getParentsFilter() != null;
 
+        /*
         if (VectorDataType.BINARY == knnQuery.getVectorDataType() && isNestedRequired) {
             final KNNVectorValues<byte[]> vectorValues = KNNVectorValuesFactory.getVectorValues(fieldInfo, reader);
             return new NestedFilteredIdsKNNByteIterator(
@@ -118,6 +117,8 @@ public class ExactSearcher {
                 knnQuery.getParentsFilter().getBitSet(leafReaderContext)
             );
         }
+
+         */
 
         if (VectorDataType.BINARY == knnQuery.getVectorDataType()) {
             final KNNVectorValues<byte[]> vectorValues = KNNVectorValuesFactory.getVectorValues(fieldInfo, reader);
@@ -141,6 +142,7 @@ public class ExactSearcher {
         }
 
         final KNNVectorValues<float[]> vectorValues = KNNVectorValuesFactory.getVectorValues(fieldInfo, reader);
+        /*
         if (isNestedRequired) {
             return new NestedFilteredIdsKNNIterator(
                 matchedDocs,
@@ -152,6 +154,8 @@ public class ExactSearcher {
                 segmentLevelQuantizationInfo
             );
         }
+
+         */
 
         return new FilteredIdsKNNIterator(
             matchedDocs,
@@ -176,7 +180,7 @@ public class ExactSearcher {
          */
         boolean useQuantizedVectorsForSearch;
         int k;
-        BitSet matchedDocs;
+        DocIdSetIterator matchedDocs;
         KNNQuery knnQuery;
         /**
          * whether the matchedDocs contains parent ids or child ids. This is relevant in the case of
