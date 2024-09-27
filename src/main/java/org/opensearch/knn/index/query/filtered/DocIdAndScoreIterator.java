@@ -35,7 +35,7 @@ public class DocIdAndScoreIterator extends DocIdSetIterator {
     @Override
     public int advance(int target) throws IOException {
         doc = target;
-        if (doc > docs.length) {
+        if (doc >= docs.length) {
             doc = NO_MORE_DOCS;
         }
         return doc;
@@ -43,10 +43,6 @@ public class DocIdAndScoreIterator extends DocIdSetIterator {
 
     @Override
     public long cost() {
-        return docs.length + 1;
-    }
-
-    public long cardinality() {
         return docs.length;
     }
 }
