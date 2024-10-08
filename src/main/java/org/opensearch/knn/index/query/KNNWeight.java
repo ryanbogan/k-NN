@@ -33,6 +33,8 @@ import org.opensearch.knn.index.memory.NativeMemoryEntryContext;
 import org.opensearch.knn.index.memory.NativeMemoryLoadStrategy;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
+import org.opensearch.knn.index.query.filtered.DocIdAndScoreIterator;
+import org.opensearch.knn.index.query.filtered.FilteredDocIdAndScoreIterator;
 import org.opensearch.knn.indices.ModelDao;
 import org.opensearch.knn.indices.ModelMetadata;
 import org.opensearch.knn.indices.ModelUtil;
@@ -121,9 +123,10 @@ public class KNNWeight extends Weight {
      * @return A Map of docId to scores for top k results
      */
     public Map<Integer, Float> searchLeaf(LeafReaderContext context, int k) throws IOException {
-        final BitSet filterBitSet = getFilteredDocsBitSet(context);
-        final DocIdSetIterator docIdSetIterator = getFilteredDocIdSetIterator(context);
-        int cardinality = filterBitSet.cardinality();
+        final BitSet bitset = getFilteredDocsBitSet(context);
+        System.out.println(bitset.getClass());
+        final FilteredDocIdAndScoreIterator filteredDocIdAndScoreIterator = getFilteredDocIdSetIterator(context);
+        int cardinality = (int) filteredDocIdAndScoreIterator.cost();
         // We don't need to go to JNI layer if no documents are found which satisfy the filters
         // We should give this condition a deeper look that where it should be placed. For now I feel this is a good
         // place,
@@ -140,7 +143,7 @@ public class KNNWeight extends Weight {
         final ExactSearcher.ExactSearcherContext exactSearcherContext = ExactSearcher.ExactSearcherContext.builder()
             .k(k)
             .isParentHits(true)
-            .matchedDocs(docIdSetIterator)
+            .matchedDocs(filteredDocIdAndScoreIterator)
             // setting to true, so that if quantization details are present we want to do search on the quantized
             // vectors as this flow is used in first pass of search.
             .useQuantizedVectorsForSearch(true)
@@ -149,7 +152,7 @@ public class KNNWeight extends Weight {
         if (filterWeight != null && canDoExactSearch(cardinality)) {
             docIdsToScoreMap = exactSearch(context, exactSearcherContext);
         } else {
-            docIdsToScoreMap = doANNSearch(context, filterBitSet, cardinality, k);
+            docIdsToScoreMap = doANNSearch(context, filteredDocIdAndScoreIterator, cardinality, k);
             if (docIdsToScoreMap == null) {
                 return Collections.emptyMap();
             }
@@ -201,29 +204,34 @@ public class KNNWeight extends Weight {
         return BitSet.of(filterIterator, maxDoc);
     }
 
-    private DocIdSetIterator getFilteredDocIdSetIterator(final LeafReaderContext ctx) throws IOException {
+    private FilteredDocIdAndScoreIterator getFilteredDocIdSetIterator(final LeafReaderContext ctx) throws IOException {
         if (this.filterWeight == null) {
-            return DocIdSetIterator.empty();
+            return new FilteredDocIdAndScoreIterator(new DocIdAndScoreIterator(new long[0]), null);
         }
 
         final Bits liveDocs = ctx.reader().getLiveDocs();
 
         final Scorer scorer = filterWeight.scorer(ctx);
         if (scorer == null) {
-            return DocIdSetIterator.empty();
+            return new FilteredDocIdAndScoreIterator(new DocIdAndScoreIterator(new long[0]), liveDocs);
         }
 
         return createDocIdSetIterator(scorer.iterator(), liveDocs);
     }
 
-    private DocIdSetIterator createDocIdSetIterator(final DocIdSetIterator filteredDocIdsIterator, final Bits liveDocs) throws IOException {
+    private FilteredDocIdAndScoreIterator createDocIdSetIterator(final DocIdSetIterator filteredDocIdsIterator, final Bits liveDocs) throws IOException {
+        final int cardinality = (int) filteredDocIdsIterator.cost();
+        final long[] docs = new long[cardinality];
+        int index = 0;
+        int docId = filteredDocIdsIterator.nextDoc();
+        while (docId != DocIdSetIterator.NO_MORE_DOCS) {
+            assert index < docs.length;
+            docs[index++] = docId;
+            docId = filteredDocIdsIterator.nextDoc();
+        }
+
         // Create a new BitSet from matching and live docs
-        return new FilteredDocIdSetIterator(filteredDocIdsIterator) {
-            @Override
-            protected boolean match(int doc) {
-                return liveDocs == null || liveDocs.get(doc);
-            }
-        };
+        return new FilteredDocIdAndScoreIterator(new DocIdAndScoreIterator(docs), liveDocs);
     }
 
     private int[] getParentIdsArray(final LeafReaderContext context) throws IOException {
@@ -249,7 +257,7 @@ public class KNNWeight extends Weight {
 
     private Map<Integer, Float> doANNSearch(
         final LeafReaderContext context,
-        final BitSet filterIdsBitSet,
+        final FilteredDocIdAndScoreIterator filteredDocIdAndScoreIterator,
         final int cardinality,
         final int k
     ) throws IOException {
@@ -332,9 +340,10 @@ public class KNNWeight extends Weight {
         }
 
         // From cardinality select different filterIds type
-        FilterIdsSelector filterIdsSelector = FilterIdsSelector.getFilterIdSelector(filterIdsBitSet, cardinality);
-        long[] filterIds = filterIdsSelector.getFilterIds();
-        FilterIdsSelector.FilterIdsSelectorType filterType = filterIdsSelector.getFilterType();
+        //FilterIdsSelector filterIdsSelector = FilterIdsSelector.getFilterIdSelector(filterIdsBitSet, cardinality);
+        long[] filterIds = filteredDocIdAndScoreIterator.getDocs();
+        //FilterIdsSelector.FilterIdsSelectorType filterType = filterIdsSelector.getFilterType();
+        FilterIdsSelector.FilterIdsSelectorType filterType = FilterIdsSelector.FilterIdsSelectorType.BATCH;
         // Now that we have the allocation, we need to readLock it
         indexAllocation.readLock();
         indexAllocation.incRef();

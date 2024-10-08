@@ -13,13 +13,11 @@ import java.io.IOException;
 @Getter
 public class DocIdAndScoreIterator extends DocIdSetIterator {
 
-    private final int[] docs;
-    private final float[] scores;
+    private final long[] docs;
     private int doc = -1;
 
-    public DocIdAndScoreIterator(int[] docs, float[] scores) {
+    public DocIdAndScoreIterator(long[] docs) {
         this.docs = docs;
-        this.scores = scores;
     }
 
     @Override

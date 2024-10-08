@@ -77,18 +77,16 @@ public final class ResultUtil {
 
     public static DocIdAndScoreIterator resultMapToDocIdAndScoreIterator(Map<Integer, Float> resultMap) {
         if (resultMap.isEmpty()) {
-            return new DocIdAndScoreIterator(new int[0], new float[0]);
+            return new DocIdAndScoreIterator(new long[0]);
         }
 
-        int[] docs = new int[resultMap.size()];
-        float[] scores = new float[resultMap.size()];
+        long[] docs = new long[resultMap.size()];
         int i = 0;
-        for (Map.Entry<Integer, Float> entry : resultMap.entrySet()) {
-            docs[i] = entry.getKey();
-            scores[i] = entry.getValue();
+        for (int doc : resultMap.keySet()) {
+            docs[i] = doc;
             i++;
         }
-        return new DocIdAndScoreIterator(docs, scores);
+        return new DocIdAndScoreIterator(docs);
     }
 
     /**
